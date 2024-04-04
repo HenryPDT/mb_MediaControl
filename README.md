@@ -16,5 +16,5 @@ This plugin adds SMTC (Media Control Overlay) support feature to MusicBee for Wi
 Put `mb_MediaControl.dll` into `MusicBee/Plugins` folder
 
 ## Acknowledgments
-* [Windows 10 Media Control Overlay](https://www.getmusicbee.com/addons/plugins/98/windows-10-media-control-overlay/)https://www.getmusicbee.com/addons/plugins/98/windows-10-media-control-overlay/)
+* [Windows 10 Media Control Overlay](https://www.getmusicbee.com/addons/plugins/98/windows-10-media-control-overlay/)
 * [CharlieJiang version](https://getmusicbee.com/forum/index.php?topic=21240.45)
