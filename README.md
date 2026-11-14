@@ -8,7 +8,7 @@ album art sometimes being missing in the Windows media overlay and in apps that 
 
 ## What's fixed
 - The cover is now set before the track is published (it was a race condition)
-- Large embedded covers are downscaled to 600 px, so they load instantly
+- Large embedded covers are downscaled (600 px by default, configurable), so they load instantly
 - Covers that MusicBee finds late (downloaded or slow to load) are picked up
 - Covers are re-sent shortly after a track change, in case Windows drops one
 - A leaking position timer and a crash on close were fixed
@@ -16,9 +16,17 @@ album art sometimes being missing in the Windows media overlay and in apps that 
 ## Install
 1. Close MusicBee.
 2. Put `mb_MediaControl.dll` in your MusicBee `Plugins` folder, replacing the old one if you have it.
-3. Start MusicBee. **Edit → Preferences → Plugins** should show *Media Control 1.0.5*.
+3. Start MusicBee. **Edit → Preferences → Plugins** should show *Media Control 1.0.6*.
 
 If the plugin doesn't load, right-click the DLL, choose **Properties**, tick **Unblock**, and restart MusicBee.
+
+## Settings
+**Edit → Preferences → Plugins → Media Control → Configure** has one option:
+
+- **Max cover size in pixels** (default 600, `0` = never shrink, up to 4096).
+  Your original covers and files are never modified; only the copy sent to Windows is resized.
+  Larger sizes (for example 1024 for a self-hosted Music Presence cover proxy) give sharper covers
+  but load and upload more slowly, so raise it only if you need to.
 
 ## Known limitation
 Skipping very quickly can leave Discord on the previous track. Windows still reports
