@@ -21,8 +21,9 @@ album art sometimes being missing in the Windows media overlay and in apps that 
 If the plugin doesn't load, right-click the DLL, choose **Properties**, tick **Unblock**, and restart MusicBee.
 
 ## Known limitation
-Skipping through tracks very quickly can leave Discord a few seconds behind. This also happens with the
-original plugin and comes from Music Presence's update limits, not from this plugin.
+Skipping very quickly can leave Discord on the previous track. Windows still reports
+the correct track at that moment (checked with media-session-dump), so this appears to be on the
+Music Presence side and also happens with the original plugin. Pausing and resuming fixes it.
 
 ## Building
 Open `MediaControl.sln` in Visual Studio (with the *.NET desktop development* workload), set the
