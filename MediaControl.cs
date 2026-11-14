@@ -73,6 +73,7 @@ namespace MusicBeePlugin
             SubscribeGlobalHooks();
             mbApiInterface = new MusicBeeApiInterface();
             mbApiInterface.Initialise(apiInterfacePtr);
+            LoadSettings();
             about.PluginInfoVersion = PluginInfoVersion;
             about.Name = "Media Control";
             about.Description = "Enables MusicBee to interact with the Windows 10/11 Media Control overlay.";
@@ -81,23 +82,85 @@ namespace MusicBeePlugin
             about.Type = PluginType.General;
             about.VersionMajor = 1;  // your plugin version
             about.VersionMinor = 0;
-            about.Revision = 5;
+            about.Revision = 6;
             about.MinInterfaceVersion = MinInterfaceVersion;
             about.MinApiRevision = MinApiRevision;
             about.ReceiveNotifications = (ReceiveNotificationFlags.PlayerEvents | ReceiveNotificationFlags.TagEvents | ReceiveNotificationFlags.DownloadEvents);
-            about.ConfigurationPanelHeight = 0;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+            about.ConfigurationPanelHeight = 30;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
             return about;
+        }
+
+        // ---- settings -------------------------------------------------------------------------------
+        // Largest side (in pixels) a cover may have before it is shrunk for the Windows media controls.
+        // 0 = never shrink. Larger values give sharper covers (e.g. for a self-hosted Music Presence
+        // cover proxy) but are slower for Windows to load and for presence tools to upload.
+        private const int DefaultMaxArtworkSide = 600;
+        private const int MaxAllowedArtworkSide = 4096;
+        private volatile int maxArtworkSide = DefaultMaxArtworkSide;
+        private NumericUpDown sizeBox;
+
+        private string SettingsPath
+        {
+            get { return Path.Combine(mbApiInterface.Setting_GetPersistentStoragePath(), "mb_MediaControl.ini"); }
+        }
+
+        private void LoadSettings()
+        {
+            try
+            {
+                if (!File.Exists(SettingsPath)) return;
+                foreach (var line in File.ReadAllLines(SettingsPath))
+                {
+                    var parts = line.Split(new[] { '=' }, 2);
+                    if (parts.Length == 2 && parts[0].Trim() == "MaxArtworkSide" && int.TryParse(parts[1].Trim(), out var v))
+                        maxArtworkSide = Math.Max(0, Math.Min(MaxAllowedArtworkSide, v));
+                }
+            }
+            catch { } // unreadable settings: keep the default
+            Log("Max cover size: " + maxArtworkSide);
         }
 
         public bool Configure(IntPtr panelHandle)
         {
+            if (panelHandle != IntPtr.Zero)
+            {
+                var panel = (Panel)Panel.FromHandle(panelHandle);
+                var label = new Label
+                {
+                    AutoSize = true,
+                    Location = new System.Drawing.Point(0, 6),
+                    Text = "Max cover size in pixels (0 = don't shrink; default " + DefaultMaxArtworkSide + "):"
+                };
+                sizeBox = new NumericUpDown
+                {
+                    Minimum = 0,
+                    Maximum = MaxAllowedArtworkSide,
+                    Increment = 100,
+                    Value = maxArtworkSide,
+                    Width = 70
+                };
+                panel.Controls.Add(label);
+                sizeBox.Location = new System.Drawing.Point(label.PreferredWidth + 8, 3);
+                panel.Controls.Add(sizeBox);
+            }
             return false;
         }
 
         // called by MusicBee when the user clicks Apply or Save in the MusicBee Preferences screen.
-        // its up to you to figure out whether anything has changed and needs updating
         public void SaveSettings()
         {
+            if (sizeBox == null || sizeBox.IsDisposed) return;
+            int value = (int)sizeBox.Value;
+            if (value == maxArtworkSide) return;
+            maxArtworkSide = value;
+            try { File.WriteAllText(SettingsPath, "MaxArtworkSide=" + value + Environment.NewLine); }
+            catch { }
+            lock (shrinkCache) { shrinkCache.Clear(); }
+            // show the playing track's cover at the new size right away
+            if (displayUpdater != null)
+            {
+                try { RefreshArtworkOnly(); } catch { }
+            }
         }
 
         // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
@@ -114,6 +177,7 @@ namespace MusicBeePlugin
         // uninstall this plugin - clean up any persisted files
         public void Uninstall()
         {
+            try { File.Delete(SettingsPath); } catch { }
         }
 
         private void MediaControl_PlayPauseButtonPress(bool pause)
@@ -547,7 +611,7 @@ namespace MusicBeePlugin
                 return;
             }
 
-            data = ShrinkArtwork(data);
+            data = ShrinkArtwork(data, maxArtworkSide);
 
             try
             {
@@ -580,19 +644,18 @@ namespace MusicBeePlugin
 
         // Embedded covers can be several MB. Windows has to load them before any app can read them and
         // presence tools have to upload them, so big files make cover loading slow and unreliable. A 600 px JPEG
-        // is plenty for the Windows media overlay and for Discord.
-        private const int MaxArtworkSide = 600;
-
+        // is plenty for the Windows media overlay and for Discord. The limit is configurable (see settings above).
         private static readonly Dictionary<string, byte[]> shrinkCache = new Dictionary<string, byte[]>();
 
-        private static byte[] ShrinkArtwork(byte[] data)
+        private static byte[] ShrinkArtwork(byte[] data, int maxSide)
         {
+            if (maxSide <= 0) return data; // shrinking disabled
             // tracks of one album share a cover: remember recent results instead of decoding the image again
             string key = null;
             try
             {
                 using (var md5 = System.Security.Cryptography.MD5.Create()) // just a cache key, not security
-                    key = BitConverter.ToString(md5.ComputeHash(data));
+                    key = maxSide + ":" + BitConverter.ToString(md5.ComputeHash(data));
             }
             catch { } // e.g. MD5 blocked by FIPS policy: simply no caching
 
@@ -607,7 +670,7 @@ namespace MusicBeePlugin
                     }
                 }
             }
-            var result = ShrinkArtworkCore(data);
+            var result = ShrinkArtworkCore(data, maxSide);
             if (key != null)
             {
                 lock (shrinkCache)
@@ -619,7 +682,7 @@ namespace MusicBeePlugin
             return result;
         }
 
-        private static byte[] ShrinkArtworkCore(byte[] data)
+        private static byte[] ShrinkArtworkCore(byte[] data, int maxSide)
         {
             try
             {
@@ -627,9 +690,9 @@ namespace MusicBeePlugin
                 using (var img = System.Drawing.Image.FromStream(input))
                 {
                     int w = img.Width, h = img.Height;
-                    if (w <= MaxArtworkSide && h <= MaxArtworkSide && data.Length < 300 * 1024)
+                    if (w <= maxSide && h <= maxSide && data.Length < 300 * 1024)
                         return data; // already small
-                    double scale = Math.Min(1.0, (double)MaxArtworkSide / Math.Max(w, h));
+                    double scale = Math.Min(1.0, (double)maxSide / Math.Max(w, h));
                     int nw = Math.Max(1, (int)Math.Round(w * scale));
                     int nh = Math.Max(1, (int)Math.Round(h * scale));
                     using (var bmp = new System.Drawing.Bitmap(nw, nh, System.Drawing.Imaging.PixelFormat.Format24bppRgb))
