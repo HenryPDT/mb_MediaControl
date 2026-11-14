@@ -4,7 +4,7 @@ This is a fork of [HenryPDT/mb_MediaControl](https://github.com/HenryPDT/mb_Medi
 album art sometimes being missing in the Windows media overlay and in apps that read it, such as
 [Music Presence](https://musicpresence.app) for Discord.
 
-**[Download the latest release](https://github.com/YOUR-USERNAME/mb_MediaControl/releases/latest)**
+**[Download the latest release](https://github.com/UjanRoy/mb_MediaControl/releases/latest)**
 
 ## What's fixed
 - The cover is now set before the track is published (it was a race condition)
